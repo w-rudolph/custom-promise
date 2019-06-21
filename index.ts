@@ -3,8 +3,8 @@ export enum PromiseStatus {
   RESOLVED = 'resolved',
   REJECTED = 'rejected'
 }
-type ArgFunc = (arg?: any) => any;
-type ResolverFunc = (resolve?: ArgFunc, reject?: ArgFunc) => any;
+type CallackFunc = (arg?: any) => any;
+type ResolverFunc = (resolve?: CallackFunc, reject?: CallackFunc) => any;
 
 const _catchErrorPromises = new Set<MyPromise>();
 
@@ -38,13 +38,14 @@ export class MyPromise {
   }
 
   static resolve(val: any) {
-    return new MyPromise((_resolve: ArgFunc) => {
+    if (val instanceof MyPromise) return val;
+    return new MyPromise((_resolve: CallackFunc) => {
       _resolve(val);
     });
   }
 
   static reject(val: any) {
-    return new MyPromise((_, _reject: ArgFunc) => {
+    return new MyPromise((_, _reject: CallackFunc) => {
       _reject(val);
     });
   }
@@ -61,7 +62,8 @@ export class MyPromise {
     return this._PromiseStatus === PromiseStatus.RESOLVED;
   }
 
-  then(resolve: ArgFunc, reject?: ArgFunc) {
+  then(resolve?: CallackFunc, reject?: CallackFunc) {
+    if (typeof resolve !== 'function') return this;
     if (this._isRejected()) return MyPromise.reject(this._PromiseValue);
     if (this._isResolved()) {
       return this._runUntilResolve(resolve, reject);
@@ -83,7 +85,7 @@ export class MyPromise {
     }
   }
 
-  private _runUntilResolve(resolve: ArgFunc, reject?: ArgFunc) {
+  private _runUntilResolve(resolve: CallackFunc, reject?: CallackFunc) {
     if (this._isCompleted()) {
       let _error = null;
       let _val;
@@ -93,7 +95,7 @@ export class MyPromise {
         _error = err;
       }
       if (_error) {
-        if (reject) {
+        if (typeof reject === 'function') {
           reject(_error);
         }
         return MyPromise.reject(_error);
@@ -101,14 +103,14 @@ export class MyPromise {
       return MyPromise.resolve(_val);
     }
   }
-  catch(onCatch: ArgFunc) {
+  catch(onCatch: CallackFunc) {
     if (this._isResolved()) return this;
     const promise = MyPromise.resolve(onCatch(this._PromiseValue));
     _catchErrorPromises.delete(this);
     return promise;
   }
 
-  finally(onFinally: ArgFunc) {
+  finally(onFinally: CallackFunc) {
     return this.then(
       val => {
         onFinally(val);

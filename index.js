@@ -31,6 +31,9 @@ class MyPromise {
         });
     }
     static resolve(val) {
+        if (val instanceof MyPromise) {
+            return val;
+        }
         return new MyPromise((_resolve) => {
             _resolve(val);
         });
@@ -50,6 +53,9 @@ class MyPromise {
         return this._PromiseStatus === PromiseStatus.RESOLVED;
     }
     then(resolve, reject) {
+        if (typeof resolve !== 'function') {
+            return this;
+        }
         if (this._isRejected())
             return MyPromise.reject(this._PromiseValue);
         if (this._isResolved()) {
@@ -83,7 +89,7 @@ class MyPromise {
                 _error = err;
             }
             if (_error) {
-                if (reject) {
+                if (typeof reject === 'function') {
                     reject(_error);
                 }
                 return MyPromise.reject(_error);
