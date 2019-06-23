@@ -1,168 +1,217 @@
+function isFunc(fn: any) {
+  return typeof fn === 'function';
+}
+function isObj(fn: any) {
+  return typeof fn === 'object';
+}
+
 export enum PromiseStatus {
   PENDING = 'pending',
   RESOLVED = 'resolved',
   REJECTED = 'rejected'
 }
-type CallackFunc = (arg?: any) => any;
-type ResolverFunc = (resolve?: CallackFunc, reject?: CallackFunc) => any;
 
-const _catchErrorPromises = new Set<MyPromise>();
+type CallbackFunc = (val?: any) => void;
+type ExcutorFunc = (resolve?: CallbackFunc, reject?: CallbackFunc) => void;
 
-export class MyPromise {
-  private _PromiseStatus: PromiseStatus;
-  private _PromiseValue: any;
+export default class Promise {
+  private status = PromiseStatus.PENDING;
+  private value = void 0;
+  private reason = void 0;
+  private rejectedCallbacks = [];
+  private resolvedCallbacks = [];
 
-  constructor(resolver: ResolverFunc) {
-    if (new.target !== MyPromise) {
-      throw new SyntaxError('Please use a new keyword to create promise!');
+  constructor(excutor: ExcutorFunc) {
+    this._resolve = this._resolve.bind(this);
+    this._reject = this._reject.bind(this);
+
+    if (!isFunc(excutor)) {
+      throw new TypeError(`Promise resolver ${excutor} is not a function`);
     }
-    this._PromiseStatus = PromiseStatus.PENDING;
-    this._PromiseValue = void 0;
-    resolver(this._resolve.bind(this), this._reject.bind(this));
+    try {
+      excutor(this._resolve, this._reject);
+    } catch (e) {
+      this._reject(e);
+    }
   }
 
-  private _resolve(val: any) {
-    this._PromiseStatus = PromiseStatus.RESOLVED;
-    this._PromiseValue = val;
+  private _resolve(value: any) {
+    if (this.status === PromiseStatus.PENDING) {
+      this.value = value;
+      this.status = PromiseStatus.RESOLVED;
+      this.resolvedCallbacks.forEach(fn => fn(this.value));
+    }
   }
 
-  private _reject(val: any) {
-    this._PromiseStatus = PromiseStatus.REJECTED;
-    this._PromiseValue = val;
-    _catchErrorPromises.add(this);
-    setTimeout(() => {
-      if (_catchErrorPromises.has(this)) {
-        throw this._PromiseValue;
-      }
-    });
+  private _reject(reason: any) {
+    if (this.status === PromiseStatus.PENDING) {
+      this.reason = reason;
+      this.status = PromiseStatus.REJECTED;
+      this.rejectedCallbacks.forEach(fn => fn(this.reason));
+    }
   }
 
-  static resolve(val: any) {
-    if (val instanceof MyPromise) return val;
-    return new MyPromise((_resolve: CallackFunc) => {
-      _resolve(val);
-    });
-  }
+  then(onFulfilled?: CallbackFunc, onRejected?: CallbackFunc) {
+    if (!isFunc(onFulfilled)) {
+      onFulfilled = val => val;
+    }
+    if (!isFunc(onRejected)) {
+      onRejected = err => {
+        throw err;
+      };
+    }
 
-  static reject(val: any) {
-    return new MyPromise((_, _reject: CallackFunc) => {
-      _reject(val);
-    });
-  }
-
-  private _isCompleted() {
-    return this._isResolved() || this._isResolved();
-  }
-
-  private _isRejected() {
-    return this._PromiseStatus === PromiseStatus.REJECTED;
-  }
-
-  private _isResolved() {
-    return this._PromiseStatus === PromiseStatus.RESOLVED;
-  }
-
-  then(resolve?: CallackFunc, reject?: CallackFunc) {
-    if (typeof resolve !== 'function') return this;
-    if (this._isRejected()) return MyPromise.reject(this._PromiseValue);
-    if (this._isResolved()) {
-      return this._runUntilResolve(resolve, reject);
-    } else {
-      return new MyPromise((_resolve, _reject) => {
-        const timer = setInterval(() => {
-          if (this._isCompleted()) {
-            clearInterval(timer);
-          }
-          const ret = this._runUntilResolve(resolve, reject);
-          if (ret && ret._isResolved()) {
-            _resolve(ret._PromiseValue);
-          }
-          if (ret && ret._isRejected()) {
-            _reject(ret._PromiseValue);
+    const promise2 = new Promise((resolve, reject) => {
+      if (this.status === PromiseStatus.RESOLVED) {
+        setTimeout(() => {
+          try {
+            const x = onFulfilled(this.value);
+            Promise.resolvePromise(promise2, x, resolve, reject);
+          } catch (e) {
+            reject(e);
           }
         });
-      });
-    }
+      }
+
+      if (this.status === PromiseStatus.REJECTED) {
+        setTimeout(() => {
+          try {
+            const x = onRejected(this.reason);
+            Promise.resolvePromise(promise2, x, resolve, reject);
+          } catch (e) {
+            reject(e);
+          }
+        });
+      }
+
+      if (this.status === PromiseStatus.PENDING) {
+        this.resolvedCallbacks.push((val: any) => {
+          setTimeout(() => {
+            try {
+              Promise.resolvePromise(
+                promise2,
+                onFulfilled(val),
+                resolve,
+                reject
+              );
+            } catch (e) {
+              reject(e);
+            }
+          });
+        });
+        this.rejectedCallbacks.push((reason: any) => {
+          setTimeout(() => {
+            try {
+              Promise.resolvePromise(
+                promise2,
+                onRejected(reason),
+                resolve,
+                reject
+              );
+            } catch (e) {
+              reject(e);
+            }
+          });
+        });
+      }
+    });
+    return promise2;
   }
 
-  private _runUntilResolve(resolve: CallackFunc, reject?: CallackFunc) {
-    if (this._isCompleted()) {
-      let _error = null;
-      let _val;
+  static resolvePromise(
+    promise2: Promise,
+    x: any,
+    resolve: CallbackFunc,
+    reject: CallbackFunc
+  ) {
+    if (promise2 === x) {
+      return reject(new TypeError('Chaining cycle detected for promise'));
+    }
+    let called = false;
+    if (x !== null && (isObj(x) || isFunc(x))) {
       try {
-        _val = resolve(this._PromiseValue);
-      } catch (err) {
-        _error = err;
-      }
-      if (_error) {
-        if (typeof reject === 'function') {
-          reject(_error);
+        const then = x.then;
+        if (isFunc(then)) {
+          then.call(
+            x,
+            (val: any) => {
+              if (called) return;
+              called = true;
+              Promise.resolvePromise(promise2, val, resolve, reject);
+            },
+            (err: any) => {
+              if (called) return;
+              called = true;
+              reject(err);
+            }
+          );
+        } else {
+          resolve(x);
         }
-        return MyPromise.reject(_error);
+      } catch (e) {
+        if (called) return;
+        called = true;
+        reject(e);
       }
-      return MyPromise.resolve(_val);
+    } else {
+      resolve(x);
     }
   }
-  catch(onCatch: CallackFunc) {
-    if (this._isResolved()) return this;
-    const promise = MyPromise.resolve(onCatch(this._PromiseValue));
-    _catchErrorPromises.delete(this);
-    return promise;
+
+  catch(onRejected: CallbackFunc) {
+    return this.then(null, onRejected);
   }
 
-  finally(onFinally: CallackFunc) {
+  finally(callback: CallbackFunc) {
     return this.then(
-      val => {
-        onFinally(val);
-        return val;
-      },
-      err => {
-        onFinally(err);
-        return err;
-      }
+      value => Promise.resolve(callback()).then(() => value),
+      reason =>
+        Promise.reject(callback()).then(() => {
+          throw reason;
+        })
     );
   }
 
-  static all(promises: any[]) {
-    return new MyPromise((reslove, reject) => {
-      const timer = setInterval(() => {
-        promises = promises.map(p => {
-          if (!(p instanceof MyPromise)) {
-            return MyPromise.resolve(p);
-          }
-          return p;
-        });
-        const rt = promises.find(p => p._isRejected());
-        if (rt) {
-          return reject(rt._PromiseValue);
-        }
-        if (promises.every(p => p._isResolved())) {
-          clearInterval(timer);
-          return reslove(promises.map(p => p._PromiseValue));
-        }
+  static resolve(value: any) {
+    return new Promise(resolve => {
+      resolve(value);
+    });
+  }
+
+  static reject(reason: any) {
+    return new Promise((_, reject) => {
+      reject(reason);
+    });
+  }
+
+  static race(promises: Promise[]) {
+    return new Promise((resolve, reject) => {
+      promises.forEach(promise => {
+        promise.then(resolve, reject);
       });
     });
   }
 
-  static race(promises: any[]) {
-    return new MyPromise((reslove, reject) => {
-      const timer = setInterval(() => {
-        promises = promises.map(p => {
-          if (!(p instanceof MyPromise)) {
-            return MyPromise.resolve(p);
-          }
-          return p;
-        });
-        const resolveOne = promises.find(p => p._isResolved());
-        if (resolveOne) {
-          clearInterval(timer);
-          return reslove(resolveOne._PromiseValue);
-        }
-        const rejectOne = promises.find(p => p._isRejected());
-        if (rejectOne) {
-          clearInterval(timer);
-          return reject(rejectOne._PromiseValue);
-        }
+  static all(promises: Promise[]) {
+    let i = 0;
+    const ret = [];
+    const handlePromise = (
+      index: number,
+      value: any,
+      resolve: CallbackFunc
+    ) => {
+      ret[index] = value;
+      i++;
+      if (i === promises.length) {
+        resolve(ret);
+      }
+    };
+
+    return new Promise((resolve, reject) => {
+      promises.forEach((promise, idx) => {
+        promise.then(value => {
+          handlePromise(idx, value, resolve);
+        }, reject);
       });
     });
   }
