@@ -18,9 +18,10 @@ describe('Promise test case', () => {
     });
 
     test('Promise reject', () => {
-        return Promise.reject('reject').catch((err) => {
-            expect(err).toBe('reject');
-        });
+        // return Promise.reject(100).catch((err) => {
+        //     expect(err).toEqual(100);
+        // });
+        return expect(Promise.reject(100)).rejects.toEqual(100);
     });
 
     test('Promise all', () => {
