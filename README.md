@@ -2,7 +2,7 @@
 
 ### constructor
 ```
-new MyPromise((resolve, reject) => {
+new Promise((resolve, reject) => {
   setTimeout(() => {
     resolve("Hello");
   });
@@ -10,10 +10,10 @@ new MyPromise((resolve, reject) => {
 ```
 
 ### static 
-* MyPromise.reject
-* MyPromise.resolve
-* MyPromise.all
-* MyPromise.race
+* Promise.reject
+* Promise.resolve
+* Promise.all
+* Promise.race
 
 ### instance
 * then
