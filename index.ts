@@ -128,6 +128,37 @@ export default class Promise {
       return reject(new TypeError('Chaining cycle detected for promise'));
     }
     let called = false;
+    /**
+     * use called for:
+     * If both resolve and reject are called,
+     * or multiple calls to the same argument are made,
+     * the first call takes precedence, and any further calls are ignored.
+     *
+     * For example:
+     * new Promise((resolve, reject) => {
+     *    resolve('OK');  // working
+     *    reject('Error); // ignored
+     * }).then(
+     *    val => { console.log(val) }, // OK
+     *    reason => { console.log(reason)  }
+     * );
+     *
+     * new Promise((resolve, reject) => {
+     *    reject('Error');  // working
+     *    resolve('OK); // ignored
+     * }).then(
+     *    val => { console.log(val) },
+     *    reason => { console.log(reason) } // Error
+     * );
+     *
+     * new Promise((resolve, reject) => {
+     *    resolve('OK1'); // working
+     *    resolve('OK2); // ignored
+     * }).then(
+     *    val => { console.log(val) }, // OK1
+     *    reason => { console.log(reason) }
+     * );
+     */
     if (x !== null && (isObj(x) || isFunc(x))) {
       try {
         const then = x.then;
