@@ -1,5 +1,3 @@
-# Custom promise
-
 ### constructor
 ```
 new Promise((resolve, reject) => {
